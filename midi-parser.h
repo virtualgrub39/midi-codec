@@ -1,7 +1,6 @@
 #ifndef MIDI_PARSER_H
 #define MIDI_PARSER_H
 
-#include "midi-writer.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,6 +13,7 @@
 #define MIDI_CHAN_PRESSURE 0xD
 #define MIDI_PITCH_BEND 0xE
 
+/* This structure MUST be zero-initialized before use */
 typedef struct
 {
     /* could be bitfielded together, but the ordering is undefined... */
@@ -41,9 +41,7 @@ typedef struct
     } as;
 } midi_event_t;
 
-int midi_event_to_bytes (const midi_event_t *e, uint8_t *out_bytes);
-int midi_event_from_bytes (midi_event_t *e, const uint8_t *bytes, uint32_t len);
-
+/* This structure MUST be zero-initialized before use */
 typedef struct
 {
     enum
@@ -79,10 +77,57 @@ typedef struct
     uint8_t last_status;
 } track_parser_t;
 
+int midi_vlq_encode (uint32_t value, uint8_t *out_bytes);
+int midi_vlq_decode (const uint8_t *bytes, uint32_t len, uint32_t *out_value);
+
+int midi_event_to_bytes (const midi_event_t *e, uint8_t *out_bytes);
+int midi_event_from_bytes (midi_event_t *e, const uint8_t *bytes, uint32_t len);
+
+uint32_t track_event_get_storage_size (const track_event_t *e);
 int track_event_to_bytes (const track_event_t *e, uint8_t *out_bytes);
 int track_event_next (track_parser_t *p, track_event_t *e);
 
+#define MIDI_PARSER_IMPLEMENTATION
 #ifdef MIDI_PARSER_IMPLEMENTATION
+
+uint32_t
+track_event_get_storage_size (const track_event_t *e)
+{
+    uint32_t total = 0;
+
+    if (e == NULL) return 0;
+
+    total += midi_vlq_encode (e->delta, NULL); /* delta */
+    total += 1;                                /* status */
+
+    switch (e->kind)
+    {
+    case EV_MIDI:
+        switch (e->as.midi.kind)
+        {
+        case MIDI_NOTE_ON:
+        case MIDI_NOTE_OFF:
+        case MIDI_POLY_PRESSURE:
+        case MIDI_CONTROLLER:
+        case MIDI_PITCH_BEND: total += 2; break;
+        case MIDI_PROGRAM:
+        case MIDI_CHAN_PRESSURE: total += 1; break;
+        }
+        break;
+    case EV_META:
+        total += 1;                                         /* type */
+        total += midi_vlq_encode (e->as.meta.length, NULL); /* length */
+        total += e->as.meta.length;                         /* data */
+        break;
+    case EV_SYSEX:
+        total += midi_vlq_encode (e->as.sysex.length, NULL); /* length */
+        total += e->as.sysex.length;                         /* data */
+        total += 1;                                          /* 0xF7 */
+        break;
+    }
+
+    return total;
+}
 
 int
 midi_event_to_bytes (const midi_event_t *e, uint8_t *out_bytes)
@@ -122,20 +167,46 @@ midi_event_to_bytes (const midi_event_t *e, uint8_t *out_bytes)
     return ev_len;
 }
 
-static int
-_mp_write_v (uint8_t *ptr, uint32_t v)
+int
+midi_vlq_encode (uint32_t value, uint8_t *out_bytes)
 {
     int i = 0;
+    uint8_t devnull[5];
 
-    if (ptr == NULL) return -1;
+    if (out_bytes == NULL) out_bytes = devnull;
 
-    if (v >= (1U << 28)) { ptr[i++] = ((v >> 28) & 0x7F) | 0x80; }
-    if (v >= (1U << 21)) { ptr[i++] = ((v >> 21) & 0x7F) | 0x80; }
-    if (v >= (1U << 14)) { ptr[i++] = ((v >> 14) & 0x7F) | 0x80; }
-    if (v >= (1U << 7)) { ptr[i++] = ((v >> 7) & 0x7F) | 0x80; }
-    ptr[i++] = (v & 0x7F);
+    if (value >= (1U << 28)) { out_bytes[i++] = ((value >> 28) & 0x7F) | 0x80; }
+    if (value >= (1U << 21)) { out_bytes[i++] = ((value >> 21) & 0x7F) | 0x80; }
+    if (value >= (1U << 14)) { out_bytes[i++] = ((value >> 14) & 0x7F) | 0x80; }
+    if (value >= (1U << 7)) { out_bytes[i++] = ((value >> 7) & 0x7F) | 0x80; }
+    out_bytes[i++] = (value & 0x7F);
 
     return i;
+}
+
+int
+midi_vlq_decode (const uint8_t *bytes, uint32_t len, uint32_t *out_value)
+{
+    uint32_t value = 0;
+    uint32_t i;
+    uint8_t b;
+
+    if (bytes == NULL || out_value == NULL) return -1;
+    if (len == 0) return -1;
+
+    for (i = 0; i < 5 && i < len; ++i)
+    {
+        b = bytes[i];
+        value = (value << 7) | (b & 0x7F);
+
+        if ((b & 0x80) == 0)
+        {
+            *out_value = value;
+            return i + 1;
+        }
+    }
+
+    return -1;
 }
 
 int
@@ -145,21 +216,25 @@ track_event_to_bytes (const track_event_t *e, uint8_t *out_bytes)
 
     if (out_bytes == NULL || e == NULL) return -1;
 
-    if ((n += _mp_write_v (out_bytes, e->delta)) <= 0) return -1;
+    m = midi_vlq_encode (e->delta, out_bytes + n);
+    if (m <= 0) return -1;
+    n += m;
 
     switch (e->kind)
     {
-    case EV_MIDI: return midi_event_to_bytes (&e->as.midi, out_bytes + n);
+    case EV_MIDI: return midi_event_to_bytes (&e->as.midi, out_bytes + n) + n;
     case EV_META:
+        out_bytes[n++] = 0xFF;
         out_bytes[n++] = e->as.meta.type;
-        m = _mp_write_v (out_bytes + n, e->as.meta.length);
+        m = midi_vlq_encode (e->as.meta.length, out_bytes + n);
         if (m <= 0) return -1;
         n += m;
         memcpy (out_bytes + n, e->as.meta.data, e->as.meta.length);
         n += e->as.meta.length;
         break;
     case EV_SYSEX:
-        m = _mp_write_v (out_bytes + n, e->as.sysex.length);
+        out_bytes[n++] = 0xF0;
+        m = midi_vlq_encode (e->as.sysex.length, out_bytes + n);
         if (m <= 0) return -1;
         n += m;
         memcpy (out_bytes + n, e->as.sysex.data, e->as.sysex.length);
@@ -254,32 +329,6 @@ midi_event_from_bytes_rolling (midi_event_t *e, uint8_t status, const uint8_t *b
     return bytes_used;
 }
 
-static int
-_mp_read_v (track_parser_t *p, uint32_t offset, uint32_t *out_v)
-{
-
-    uint32_t total = 0;
-    uint32_t value = 0, i;
-    uint8_t b;
-
-    if (p == NULL) return -1;
-    if (p->idx + offset >= p->len) return -1;
-
-    for (i = 0; i < 5; ++i)
-    {
-        b = p->bytes[p->idx + total + offset];
-        total += 1;
-
-        value = (value << 7) | (b & 0x7F);
-
-        if ((b & 0x80) == 0) goto done;
-    }
-
-done:
-    *out_v = value;
-    return total;
-}
-
 int
 track_event_next (track_parser_t *p, track_event_t *e)
 {
@@ -290,7 +339,7 @@ track_event_next (track_parser_t *p, track_event_t *e)
 
     if (p == NULL || e == NULL) return -1;
 
-    if ((n = _mp_read_v (p, 0, &delta)) <= 0) return 0;
+    if ((n = midi_vlq_decode (p->bytes + p->idx, p->len - p->idx, &delta)) <= 0) return -1;
 
     p->idx += n;
     e->delta = delta;
@@ -310,7 +359,7 @@ track_event_next (track_parser_t *p, track_event_t *e)
     else if (b == 0xF0 || b == 0xF7) /* SYSEX */
     {
         uint32_t vlength;
-        if ((n = _mp_read_v (p, 1, &vlength)) <= 0) return -1;
+        if ((n = midi_vlq_decode (p->bytes + p->idx + 1, p->len - p->idx - 1, &vlength)) <= 0) return -1;
 
         e->kind = EV_SYSEX;
         e->as.sysex.data = (const uint8_t *)p->bytes + p->idx + 1 + n;
@@ -322,7 +371,7 @@ track_event_next (track_parser_t *p, track_event_t *e)
     {
         uint8_t type = p->bytes[p->idx + 1];
         uint32_t vlength;
-        if ((n = _mp_read_v (p, 2, &vlength)) <= 0) return -1;
+        if ((n = midi_vlq_decode (p->bytes + p->idx + 2, p->len - p->idx - 2, &vlength)) <= 0) return -1;
 
         e->kind = EV_META;
         e->as.meta.type = type;

@@ -23,7 +23,7 @@
      midi_reader_t mr = { 0 };
      uint32_t tracklen;
 
-     midif = fopen ("melody.mid", "rb");
+     midif = fopen (path, "rb");
      mr_begin (&mr, midif);
 
      printf ("File: %s\n", path);
@@ -34,7 +34,7 @@
      while ((tracklen = mr_next_track (&mr)) > 0)
      {
          unsigned char *evdata = malloc (tracklen);
-         mr_get_events (&mr, evdata);
+         mr_get_track_data (&mr, evdata);
 
          printf ("----- Track %03d -----\n", mr.track_idx + 1);
          printf ("[%d bytes]\n", tracklen);
@@ -79,10 +79,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define MIDI_FMT_SINGLE 0
-#define MIDI_FMT_MTRACK 1
-#define MIDI_FMT_MSONG 2
-
+/* This structure MUST be zero-initialized before use */
 typedef struct
 {
     /* parser state */
@@ -114,10 +111,9 @@ uint32_t mr_next_track (midi_reader_t *mr);
  * On failure (reached end of track / eof, malformed event, etc.) returns non-zero value;
  * On success, `out_data` is filled with event data and it's length, and 0 is returned.
  * `out_data` is expected to be pre-allocated by the user to correct size. */
-int mr_get_events (midi_reader_t *mr, uint8_t *out_data);
+int mr_get_track_data (midi_reader_t *mr, uint8_t *out_data);
 
 /* Finalizes all reads, leaving the source file in usable state.
- * Cleans up MIDI reader context, freeing up the memory.
  * This function DOESN'T close the file provided in `mr_init`. */
 void mr_end (midi_reader_t *mr);
 
@@ -232,7 +228,7 @@ mr_next_track (midi_reader_t *mr)
 }
 
 int
-mr_get_events (midi_reader_t *mr, uint8_t *out_data)
+mr_get_track_data (midi_reader_t *mr, uint8_t *out_data)
 {
     uint8_t c;
     uint32_t i;

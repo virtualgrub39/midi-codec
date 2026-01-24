@@ -1,9 +1,14 @@
 #ifndef MIDI_WRITER_H
 #define MIDI_WRITER_H
 
+#define MIDI_FMT_SINGLE 0
+#define MIDI_FMT_MTRACK 1
+#define MIDI_FMT_MSONG 2
+
 #include <stdint.h>
 #include <stdio.h>
 
+/* This structure MUST be zero-initialized before use */
 typedef struct
 {
     /* writer state */
@@ -21,7 +26,7 @@ typedef struct
 /* Initializes MIDI writer context; Tries to write MIDI header bytes;
  * On success, writes the MIDI header to file, with some placeholder data, and returns 0;
  * On failure (write failed, NULL argument), returns -1, without setting any error indicator; */
-int mw_begin (midi_writer_t *mw, FILE *dst, int16_t format, uint16_t tickdiv);
+int mw_begin (midi_writer_t *mw, FILE *dst, uint16_t format, uint16_t tickdiv);
 
 /* Filnalizes MIDI file, by updating the placeholder data in the MIDI header.
  * This function does not end current track, nor checks if the MIDI header has been written, so make sure appropriate
@@ -86,7 +91,7 @@ _mw_write_u16 (midi_writer_t *mw, uint16_t u16)
 }
 
 int
-mw_begin (midi_writer_t *mw, FILE *dst, int16_t format, uint16_t tickdiv)
+mw_begin (midi_writer_t *mw, FILE *dst, uint16_t format, uint16_t tickdiv)
 {
     if (!mw) return -1;
     if (!dst) return -1;
