@@ -4,7 +4,6 @@
 #include <midi-writer.h>
 
 #include <stdio.h>
-#include <stdlib.h>
 
 int
 main (void)
@@ -22,22 +21,24 @@ main (void)
 
     mw_track_begin (&mw);
 
+    /* example using semi-manual encoding, with rolling-status */
     for (j = 0; j < num_notes; ++j)
     {
-        track_event_t ev = { 0 };
+        midi_event_t ev;
         uint8_t buf[8];
+        int n = 0;
 
-        ev.delta = 0;
-        ev.kind = EV_MIDI;
-        ev.as.midi.kind = MIDI_NOTE_ON;
-        ev.as.midi.channel = 0;
-        ev.as.midi.as.note_on.note = notes[j];
-        ev.as.midi.as.note_on.velocity = 100;
+        ev.kind = MIDI_NOTE_ON;
+        ev.channel = 0;
+        ev.as.note_on.note = notes[j];
+        ev.as.note_on.velocity = 100;
 
-        track_event_to_bytes (&ev, buf);
-        mw_track_append (&mw, buf, track_event_get_storage_size (&ev));
+        n += midi_vlq_encode (0, buf);
+        n += midi_event_to_bytes (&ev, buf + n, j > 0);
+        mw_track_append (&mw, buf, n);
     }
 
+    /* example using fancy do-everything `track_event_to_bytes`, but no rolling-status */
     for (j = 0; j < num_notes; ++j)
     {
         track_event_t ev = { 0 };

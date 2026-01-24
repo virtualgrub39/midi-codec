@@ -80,7 +80,7 @@ typedef struct
 int midi_vlq_encode (uint32_t value, uint8_t *out_bytes);
 int midi_vlq_decode (const uint8_t *bytes, uint32_t len, uint32_t *out_value);
 
-int midi_event_to_bytes (const midi_event_t *e, uint8_t *out_bytes);
+int midi_event_to_bytes (const midi_event_t *e, uint8_t *out_bytes, int rolling);
 int midi_event_from_bytes (midi_event_t *e, const uint8_t *bytes, uint32_t len);
 
 uint32_t track_event_get_storage_size (const track_event_t *e);
@@ -130,15 +130,19 @@ track_event_get_storage_size (const track_event_t *e)
 }
 
 int
-midi_event_to_bytes (const midi_event_t *e, uint8_t *out_bytes)
+midi_event_to_bytes (const midi_event_t *e, uint8_t *out_bytes, int rolling)
 {
-    int ev_len = 1, i;
+    int ev_len = 0, i;
     uint8_t ev_bytes[3] = { 0 };
 
     if (e == NULL || out_bytes == NULL) return -1;
 
-    ev_bytes[0] |= e->kind << 4;
-    ev_bytes[0] |= e->channel;
+    if (!rolling)
+    {
+        ev_bytes[0] |= e->kind << 4;
+        ev_bytes[0] |= e->channel;
+        ev_len += 1;
+    }
 
     switch (e->kind)
     {
@@ -146,18 +150,18 @@ midi_event_to_bytes (const midi_event_t *e, uint8_t *out_bytes)
     case MIDI_NOTE_OFF:
     case MIDI_POLY_PRESSURE:
     case MIDI_CONTROLLER:
-        ev_bytes[1] = e->as.bytes[0];
-        ev_bytes[2] = e->as.bytes[1];
+        ev_bytes[ev_len] = e->as.bytes[0];
+        ev_bytes[ev_len + 1] = e->as.bytes[1];
         ev_len += 2;
         break;
     case MIDI_PROGRAM:
     case MIDI_CHAN_PRESSURE:
-        ev_bytes[1] = e->as.bytes[0];
+        ev_bytes[ev_len] = e->as.bytes[0];
         ev_len += 1;
         break;
     case MIDI_PITCH_BEND:
-        ev_bytes[1] = e->as.pitch_bend;
-        ev_bytes[2] = (e->as.pitch_bend >> 7);
+        ev_bytes[ev_len] = e->as.pitch_bend;
+        ev_bytes[ev_len + 1] = (e->as.pitch_bend >> 7);
         ev_len += 2;
         break;
     default: return -1;
@@ -222,7 +226,7 @@ track_event_to_bytes (const track_event_t *e, uint8_t *out_bytes)
 
     switch (e->kind)
     {
-    case EV_MIDI: return midi_event_to_bytes (&e->as.midi, out_bytes + n) + n;
+    case EV_MIDI: return midi_event_to_bytes (&e->as.midi, out_bytes + n, 0) + n;
     case EV_META:
         out_bytes[n++] = 0xFF;
         out_bytes[n++] = e->as.meta.type;
