@@ -82,7 +82,6 @@ typedef struct
 int track_event_to_bytes (const track_event_t *e, uint8_t *out_bytes);
 int track_event_next (track_parser_t *p, track_event_t *e);
 
-#define MIDI_PARSER_IMPLEMENTATION
 #ifdef MIDI_PARSER_IMPLEMENTATION
 
 int

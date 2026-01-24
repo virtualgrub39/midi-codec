@@ -1,8 +1,87 @@
+/* MIDI-reader - a simple MIDI file parser
+ * Copyright (c) 2026, virtualgrub39
+ * All rights reserved.
+ * This header can be used, to parse MIDI file header, and extract track data out of the MIDI file.
+ * It's made to be easily readable and hackable, use the simplest API possible, and be easy to embed into existing
+ projects.
+ * Safety is not the main concern though, so You should know what you're doing, when using this library.
+
+ * Example usage
+
+ ```c
+ #define MIDI_READER_IMPLEMENTATION
+ #include "midi-reader.h"
+
+ #include <stdio.h>
+ #include <stdlib.h>
+
+ int
+ main (void)
+ {
+     const char *path = "melody.mid";
+     FILE *midif;
+     midi_reader_t mr = { 0 };
+     uint32_t tracklen;
+
+     midif = fopen ("melody.mid", "rb");
+     mr_begin (&mr, midif);
+
+     printf ("File: %s\n", path);
+     printf ("Format: %hu\n", mr.format);
+     printf ("Track count: %hu\n", mr.ntracks);
+     printf ("Timing interval: %hu\n", mr.tickdiv);
+
+     while ((tracklen = mr_next_track (&mr)) > 0)
+     {
+         unsigned char *evdata = malloc (tracklen);
+         mr_get_events (&mr, evdata);
+
+         printf ("----- Track %03d -----\n", mr.track_idx + 1);
+         printf ("[%d bytes]\n", tracklen);
+
+         // ... parse events using midi-parser.h :3 ...
+
+         free (evdata);
+     }
+
+     fclose (midif);
+     return 0;
+ }
+ ```
+
+ * License
+
+ Copyright (c) 2026, virtualgrub39
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+ following conditions are met:
+
+ 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+ disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following
+ disclaimer in the documentation and/or other materials provided with the distribution.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+ */
+
 #ifndef MIDI_READER_H
 #define MIDI_READER_H
 
 #include <stdint.h>
 #include <stdio.h>
+
+#define MIDI_FMT_SINGLE 0
+#define MIDI_FMT_MTRACK 1
+#define MIDI_FMT_MSONG 2
 
 typedef struct
 {

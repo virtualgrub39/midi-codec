@@ -6,18 +6,51 @@
 
 typedef struct
 {
-    FILE *dst;
-    uint32_t i;
+    /* writer state */
+    FILE *dst;  /* destination file */
+    uint32_t i; /* current file offset */
     /* header info */
-    uint16_t ntracks;
+    uint16_t ntracks; /* count of `mw_track_begin` calls */
     /* track info */
-    uint32_t track_offset;
+    uint32_t track_offset; /* file offset to begining of event data section of current track */
+    /* [ MTrk:4 ][ Track-len:4 ][ Track data:... ] */
+    /*                          ^              */
+    /* used for patching Track-len, after `mw_track_end` is called */
 } midi_writer_t;
 
+/* Initializes MIDI writer context; Tries to write MIDI header bytes;
+ * On success, writes the MIDI header to file, with some placeholder data, and returns 0;
+ * On failure (write failed, NULL argument), returns -1, without setting any error indicator; */
 int mw_begin (midi_writer_t *mw, FILE *dst, int16_t format, uint16_t tickdiv);
+
+/* Filnalizes MIDI file, by updating the placeholder data in the MIDI header.
+ * This function does not end current track, nor checks if the MIDI header has been written, so make sure appropriate
+ * functions have been called before calling this function;
+ * On success, updates MIDI header placeholders with true values, and returns 0;
+ * On failure (seeking or write failed), returns -1, without setting any error indicator; */
 int mw_end (midi_writer_t *mw);
+
+/* Begins new MIDI track, by appending track header.
+ * This function does not end previous track, nor checks if the MIDI header has been written, so make sure appropriate
+ * functions have been called before calling this function;
+ * On success, writes MIDI track header, and returns 0;
+ * On failure (NULL-argument, write failed) returns -1, without setting any error indicator; */
 int mw_track_begin (midi_writer_t *mw);
+
+/* Appends data from buffer into track, as event data.
+ * This function appends the raw data from buffer into MIDI track, treating the data as event data;
+ * This function does not perform any event format validation, so it can be used to append any arbitrary data;
+ * This function does not begin new track, nor checks if the MIDI header or track have been written, so make sure
+ * appropriate functions have been called before calling this function;
+ * On success appends data to the current track, and returns 0;
+ * On failure (NULL-argument, write failed) returns -1 without setting any error indicator; */
 int mw_track_append (midi_writer_t *mw, const uint8_t *data, uint32_t len);
+
+/* Finalizes current track, by filling out placeholder data in previous track header;
+ * This function does not check, if the track header exists, nor if MIDI header has been written, so make sure
+ * appropriate functions have been called before calling this function;
+ * On success, updates track header placeholders with true values, and returns 0;
+ * On failure (seeking or write failed), returns -1, without setting any error indicator; */
 int mw_track_end (midi_writer_t *mw);
 
 #ifdef MIDI_WRITER_H
