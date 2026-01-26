@@ -42,15 +42,17 @@ typedef struct
 } midi_event_t;
 
 /* This structure MUST be zero-initialized before use */
+
+enum midi_event_kind
+{
+    EV_MIDI,
+    EV_SYSEX,
+    EV_META
+};
+
 typedef struct
 {
-    enum
-    {
-        EV_MIDI,
-        EV_SYSEX,
-        EV_META
-    } kind;
-
+    enum midi_event_kind kind;
     uint32_t delta;
 
     union
