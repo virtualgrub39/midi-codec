@@ -102,18 +102,18 @@ typedef struct
  * anywhere. You may check `errno` for any system errors, but it's not guaranteed to be set; */
 int mr_begin (midi_reader_t *mr, FILE *src);
 
-/* Reads from source file, untill track marker is encoutered; Parses track length in bytes;
+/* Reads from source file, until track marker is encoutered; Parses track length in bytes;
  * On failure (reached eof before finding marker, etc.) returns 0;
  * On success returns track length in bytes (non-0 for any valid MIDI file); */
 uint32_t mr_next_track (midi_reader_t *mr);
 
 /* Reads all event data from the current track;
  * On failure (reached end of track / eof, malformed event, etc.) returns non-zero value;
- * On success, `out_data` is filled with event data and it's length, and 0 is returned.
+ * On success, `out_data` is filled with event data and its length, and 0 is returned.
  * `out_data` is expected to be pre-allocated by the user to correct size. */
 int mr_get_track_data (midi_reader_t *mr, uint8_t *out_data);
 
-/* Finalizes all reads, leaving the source file in usable state.
+/* Currently doesn't do anything, but you should call it nontheless, after you're done with reading the file;
  * This function DOESN'T close the file provided in `mr_init`. */
 void mr_end (midi_reader_t *mr);
 
